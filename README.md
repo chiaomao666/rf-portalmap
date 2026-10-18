@@ -10,6 +10,8 @@ Oracle 常駐採集 → Supabase 公開快照與即時通知 → GitHub Pages。
 本機：設定 `.env` 後 `npm start`，開啟 http://127.0.0.1:8787 。
 測試：`npm test`，不登入遊戲、不向線上資料庫發送測試戰況。
 
+歷史長期封存：Oracle 自動保存至 `.data/history-archives/`，不跟隨 Supabase 的近期紀錄清理；仍需自行做異地備份。GitHub Pages 自動讀取還需公開的 HTTPS 封存出口或發布 `archives/` 靜態檔案，詳見 [BACKEND.md](BACKEND.md) 的「Oracle 長期歷史封存」。
+
 ## 地圖與路線規劃
 
 ### 排行、控制區、縮時與戰報

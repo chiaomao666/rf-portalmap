@@ -73,6 +73,7 @@ class MapFeatures{
   this.el('openRankings').onclick=()=>this.openRankings();this.el('openHistory').onclick=()=>this.openHistory();
   this.el('historySource').value='cloud';this.el('historySource').onchange=()=>this.loadHistory();this.el('historyDate').onchange=()=>this.loadHistory();this.el('historyDate').value=dateKey(Date.now());
   this.el('historyDate').min=CLOUD_HISTORY_START;this.el('historyAvailability').hidden=false;
+  this.el('historyAvailability').textContent='歷史功能自 2026/10/10 開始，不代表起日起資料仍全部存在。近期雲端最多保留 7 天／2,000 筆；較舊日期需要已封存的紀錄。封存不會補回先前已清除的資料。';
   this.el('historySlider').oninput=()=>this.selectFrame(Number(this.el('historySlider').value));
   this.el('historyPlay').onclick=()=>this.togglePlayback();this.el('historySpeed').onchange=()=>{if(this.playing){this.pause();this.togglePlayback();}};
   this.el('historyExport').onclick=()=>this.exportReport();this.el('historyCsv').onclick=()=>this.exportCsv();
@@ -112,7 +113,7 @@ class MapFeatures{
   this.el('historyStatus').textContent='正在讀取紀錄…';
   try{let rows=source==='cloud'?await this.loadCloud(date):source==='import'?this.imported:this.localFrames;
    if(token!==this.loadToken)return;rows=rows.filter(f=>dateKey(f.captured_at)===date);this.frames=rows.length?validateReport({kind:'rf-battle-report',version:1,frames:rows}).frames:[];this.setFrameControls();
-   this.el('historyStatus').textContent=this.frames.length?`${source==='cloud'?'雲端控制權':source==='import'?'匯入':'本機'} · ${this.frames.length} 個真實快照；紀錄間空白不補造。${source==='local'?'只涵蓋此瀏覽器收到資料的時段，最多保留 60 個快照。':''}${source==='cloud'?'雲端僅存陣營與聯盟變化，不含歷史比分／戰鬥詳情；每分鐘保留最後快照。':''}${this.localStorageError?' 本機儲存失敗，請匯出備份。':''}`:'這一天沒有紀錄。未啟用歷史保存或尚未開始採集時，不會有過去資料。';
+   this.el('historyStatus').textContent=this.frames.length?`${source==='cloud'?'雲端控制權（近期／封存）':source==='import'?'匯入':'本機'} · ${this.frames.length} 個真實快照；紀錄間空白不補造。${source==='local'?'只涵蓋此瀏覽器收到資料的時段，最多保留 60 個快照。':''}${source==='cloud'?'僅存陣營與聯盟變化，不含歷史比分／戰鬥詳情；每分鐘至多一個快照。':''}${this.localStorageError?' 本機儲存失敗，請匯出備份。':''}`:'這一天沒有可讀取的紀錄。近期雲端僅保留最近 7 天、最多 2,000 筆；較舊紀錄須已封存並公開讀取，封存前被清除的資料無法補回。';
    if(this.frames.length)this.selectFrame(0);
   }catch{if(token===this.loadToken)this.el('historyStatus').textContent='雲端歷史讀取失敗，請稍後重試，或手動切換「本機紀錄（備用）」／匯入戰報；不會自動混入本機紀錄。';}
  }

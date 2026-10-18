@@ -5,5 +5,8 @@ window.RF_MONITOR_CONFIG = {
   apiBase: "",
   supabaseUrl: "https://bfecoizruicaaqxhmyqn.supabase.co",
   publishableKey: "sb_publishable_1rZAuHtmtEORxK73dbg4eQ_WavHHSMf",
-  forceSupabase: false
+  forceSupabase: false,
+  // 若封存由獨立 HTTPS 網域提供，新增 archiveBase: "https://你的網域/archives"。
+  // 未設定時使用同站 ./archives；GitHub Pages 須另外發布封存檔才可讀到。
+  archiveBase: ""
 };

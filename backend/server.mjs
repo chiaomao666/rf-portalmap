@@ -6,13 +6,15 @@ import {CityState} from './model.mjs';
 import {Collector} from './collector.mjs';
 import {createGameLogin} from './login.mjs';
 import {SupabasePublisher} from './publisher.mjs';
+import {HistoryArchive,validDate} from './history-archive.mjs';
 
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const state=new CityState(), clients=new Set();
 let collector;
-function snapshot() { return {cities:state.rows({includeInactive:true}),status:{...collector.status,knownCities:state.cities.size,publication:{...publisher.status}}}; }
+function snapshot() { return {cities:state.rows({includeInactive:true}),status:{...collector.status,knownCities:state.cities.size,publication:{...publisher.status},archive:{...archive.status}}}; }
 const publisher=new SupabasePublisher({url:process.env.SUPABASE_URL,key:process.env.SUPABASE_WRITE_KEY,getSnapshot:snapshot});
-function broadcast() { publisher.request();for (const res of clients) res.write('event: change\ndata: {}\n\n'); }
+const archive=new HistoryArchive({directory:process.env.RF_ARCHIVE_DIR||path.join(root,'.data','history-archives'),getSnapshot:snapshot});
+function broadcast() { publisher.request();void archive.capture();for (const res of clients) res.write('event: change\ndata: {}\n\n'); }
 collector=new Collector({state,token:process.env.RF_USER_TOKEN,userId:process.env.RF_USER_ID,
   refreshToken:createGameLogin({env:process.env}),
   unionId:process.env.RF_UNION_ID,
@@ -41,6 +43,15 @@ const server=http.createServer(async (req,res)=>{
     }catch{res.writeHead(503,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({error:'歷史尚未啟用或讀取失敗'}));}
     return;
   }
+  // 只公開固定索引與日期壓縮檔；分鐘原檔、暫存檔和其他後端資料不對外提供。
+  if(pathname==='/archives/index.json'||/^\/archives\/\d{4}-\d{2}-\d{2}\.json\.gz$/.test(pathname)){
+    const name=pathname.slice('/archives/'.length);
+    if(name!=='index.json'&&!validDate(name.slice(0,10))){res.writeHead(400);res.end();return;}
+    try{const data=await readFile(path.join(archive.directory,name));
+      res.writeHead(200,{'Content-Type':name==='index.json'?'application/json; charset=utf-8':'application/gzip',
+        'Cache-Control':name==='index.json'?'no-cache':'public, max-age=300'});res.end(data);
+    }catch(error){res.writeHead(error.code==='ENOENT'?404:503);res.end();}return;
+  }
   // 不公開任意檔案：.env、後端原始碼、憑證一律不會被靜態網站送出。
   if (pathname==='/monitor-config.js') {
     try {
@@ -49,7 +60,7 @@ const server=http.createServer(async (req,res)=>{
     } catch {res.writeHead(404);res.end();}
     return;
   }
-  const publicFiles={'/battle-map.css':'text/css; charset=utf-8','/cities-map.json':'application/json; charset=utf-8','/portal-map.png':'image/png','/inferred-routes.json':'application/json; charset=utf-8','/reference-route-geometry.json':'application/json; charset=utf-8','/route-planner.js':'text/javascript; charset=utf-8','/route-editor.js':'text/javascript; charset=utf-8','/map-features.js':'text/javascript; charset=utf-8'};
+  const publicFiles={'/history-reader.js':'text/javascript; charset=utf-8','/battle-map.css':'text/css; charset=utf-8','/cities-map.json':'application/json; charset=utf-8','/portal-map.png':'image/png','/inferred-routes.json':'application/json; charset=utf-8','/reference-route-geometry.json':'application/json; charset=utf-8','/route-planner.js':'text/javascript; charset=utf-8','/route-editor.js':'text/javascript; charset=utf-8','/map-features.js':'text/javascript; charset=utf-8'};
   const tile=/^\/tiles\/[0-6]\/\d{1,2}\/\d{1,2}\.png$/.test(pathname);
   if (publicFiles[pathname] || tile) {
     try {
@@ -68,7 +79,8 @@ server.listen(Number(process.env.PORT || 8787),process.env.HOST || '127.0.0.1',(
   console.log('RF monitor listening on port '+(process.env.PORT || 8787));
   publisher.start();
   collector.start();
+  archive.start();
 });
-for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>{
-  collector.stop();publisher.stop();for (const res of clients)res.end();server.close(()=>process.exit(0));
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,async()=>{
+  collector.stop();publisher.stop();for (const res of clients)res.end();await archive.stop();server.close(()=>process.exit(0));
 });
