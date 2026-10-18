@@ -74,9 +74,30 @@ test('匯入失敗不覆寫戰報，匯入成功可播放；控制變化不推�
 test('色塊為有限範圍 Voronoi 估算，不外插整張海洋、座標不變',()=>{
  const {tools,cities}=fixture(),before=JSON.stringify(cities);const cells=tools.territories(cities,1000,1000);assert.equal(cells.length,3);for(const cell of cells)for(const p of cell.polygon)assert.ok(p.every(n=>Number.isFinite(n)&&n>=0&&n<=1000));assert.equal(JSON.stringify(cities),before);
 });
-test('自動規劃沿已存在的路線；未接合、交叉不補線，機場須明確啟用',()=>{
+test('自動規劃沿已存在及允許種類的路線；未接合、交叉不補線',()=>{
  const {tools}=fixture();const cities=[{city_id:1,x_position:0,y_position:0},{city_id:2,x_position:100,y_position:0},{city_id:3,x_position:200,y_position:0},{city_id:4,x_position:300,y_position:100}];
  const routes=[{type:'railway',points:[[0,0],[50,50],[100,0]]},{type:'dirt',points:[[100,0],[200,0]]},{type:'airport',points:[[200,0],[300,100]]}];
  const plan=tools.shortestRoute(routes,cities,1,3,['railway','dirt']);assert.equal(plan.segments.length,2);assert.deepEqual(Array.from(plan.ids),[1,2,3]);assert.throws(()=>tools.shortestRoute(routes,cities,1,4,['railway','dirt']));assert.equal(tools.shortestRoute(routes,cities,1,4,['railway','dirt','airport']).segments.length,3);
  assert.throws(()=>tools.shortestRoute([{type:'railway',points:[[-100,0],[100,0],[400,0]]}],cities,1,2,['railway']));assert.throws(()=>tools.shortestRoute(routes,cities,1,1,['railway']));
+});
+
+test('機場優先減少地面距離，不被機場示意線的長弧度誤導；可切回總線長',()=>{
+ const {tools}=fixture();
+ const cities=[0,50,350,400].map((x,i)=>({city_id:i+1,x_position:x,y_position:0}));
+ const routes=[{type:'railway',points:[[0,0],[400,0]]},{type:'dirt',points:[[0,0],[50,0]]},{type:'airport',points:[[50,0],[200,1000],[350,0]]},{type:'railway',points:[[350,0],[400,0]]}];
+ const types=['railway','dirt','airport'],original=JSON.stringify(routes);
+ const preferred=tools.shortestRoute(routes,cities,1,4,types);
+ assert.deepEqual(Array.from(preferred.ids),[1,2,3,4]);assert.equal(preferred.groundDistance,100);assert.equal(preferred.airportLegs,1);assert.ok(preferred.distance>400);
+ assert.deepEqual(Array.from(tools.shortestRoute(routes,cities,1,4,types,{strategy:'distance'}).ids),[1,4]);
+ assert.deepEqual(Array.from(tools.shortestRoute(routes,cities,1,4,['railway','dirt']).ids),[1,4]);
+ assert.equal(JSON.stringify(routes),original);assert.throws(()=>tools.shortestRoute(routes,cities,1,4,types,{strategy:'unknown'}));
+});
+
+test('地面距離相同時減少機場轉乘，不為多搭機場繞圈；無機場捷徑仍走地面',()=>{
+ const {tools}=fixture(),cities=[{city_id:1,x_position:0,y_position:0},{city_id:2,x_position:200,y_position:0},{city_id:3,x_position:400,y_position:0},{city_id:4,x_position:600,y_position:0}];
+ const routes=[{type:'airport',points:[[0,0],[200,0]]},{type:'airport',points:[[200,0],[400,0]]},{type:'airport',points:[[0,0],[200,500],[400,0]]},{type:'railway',points:[[400,0],[600,0]]}];
+ const result=tools.shortestRoute(routes,cities,1,4,['airport','railway']);
+ assert.deepEqual(Array.from(result.ids),[1,3,4]);assert.equal(result.airportLegs,1);assert.equal(result.groundDistance,200);
+ const ground=tools.shortestRoute([{type:'railway',points:[[0,0],[600,0]]}],cities,1,4,['airport','railway']);
+ assert.equal(ground.airportLegs,0);assert.equal(ground.groundDistance,600);
 });

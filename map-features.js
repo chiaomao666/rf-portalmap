@@ -48,7 +48,8 @@ function territories(cities,width,height){
   }return {id:s.id,polygon};
  });
 }
-function shortestRoute(routes,cities,start,end,types){
+function shortestRoute(routes,cities,start,end,types,{strategy='airport-first'}={}){
+ if(!['airport-first','distance'].includes(strategy))throw Error('規劃策略無效');
  const coords=new Map(cities.filter(c=>c.x_position!=null&&c.y_position!=null).map(c=>[Number(c.city_id),[Number(c.x_position),Number(c.y_position)]]));
  const nearest=p=>{let id=null,d=40;for(const [key,q]of coords){const n=Math.hypot(p[0]-q[0],p[1]-q[1]);if(n<d){id=key;d=n;}}return id;};
  const graph=new Map();const add=(a,b,path,length)=>{if(!graph.has(a))graph.set(a,[]);graph.get(a).push({to:b,path,length});};
@@ -56,11 +57,14 @@ function shortestRoute(routes,cities,start,end,types){
   const length=points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p[0]-points[i][0],p[1]-points[i][1]),0);add(a,b,r,length);add(b,a,r,length);
  }
  start=Number(start);end=Number(end);if(start===end||!coords.has(start)||!coords.has(end))throw Error('請選兩座不同城市');
- const dist=new Map([[start,0]]),previous=new Map(),visited=new Set();
- while(true){let current=null,best=Infinity;for(const [id,d]of dist)if(!visited.has(id)&&d<best){current=id;best=d;}if(current==null)throw Error('目前路線檔沒有相連的可用路徑；不會以直線補接');if(current===end)break;visited.add(current);
-  for(const edge of graph.get(current)||[]){const cost=best+edge.length;if(cost<(dist.get(edge.to)??Infinity)){dist.set(edge.to,cost);previous.set(edge.to,{from:current,...edge});}}
+ // 機場優先：先減少地面線長，再減少機場轉乘次數，最後比較總線長。
+ // 這是偏好排序，不表示機場消耗為零，也不是未經確認的遊戲能量公式。
+ const compare=(a,b)=>{if(!b)return -1;const keys=strategy==='airport-first'?['ground','air','total']:['total','ground','air'];for(const key of keys){if(a[key]!==b[key])return a[key]-b[key];}return 0;};
+ const dist=new Map([[start,{ground:0,air:0,total:0}]]),previous=new Map(),visited=new Set();
+ while(true){let current=null,best=null;for(const [id,d]of dist)if(!visited.has(id)&&compare(d,best)<0){current=id;best=d;}if(current==null)throw Error('目前路線檔沒有相連的可用路徑；不會以直線補接');if(current===end)break;visited.add(current);
+  for(const edge of graph.get(current)||[]){if(visited.has(edge.to))continue;const air=edge.path.type==='airport';const cost={ground:best.ground+(air?0:edge.length),air:best.air+(air?1:0),total:best.total+edge.length};if(compare(cost,dist.get(edge.to))<0){dist.set(edge.to,cost);previous.set(edge.to,{from:current,...edge});}}
  }
- const segments=[],ids=[end];let current=end;while(current!==start){const step=previous.get(current);segments.unshift(step.path);current=step.from;ids.unshift(current);}return {segments,ids,distance:dist.get(end)};
+ const segments=[],ids=[end];let current=end;while(current!==start){const step=previous.get(current);segments.unshift(step.path);current=step.from;ids.unshift(current);}const cost=dist.get(end);return {segments,ids,distance:cost.total,groundDistance:cost.ground,airportLegs:cost.air,strategy};
 }
 function download(doc,value,name,type='application/json'){
  const blob=new Blob([typeof value==='string'?value:JSON.stringify(value)],{type});const url=URL.createObjectURL(blob),a=doc.createElement('a');a.href=url;a.download=name;doc.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);

@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const code=await readFile(new URL('../route-planner.js',import.meta.url),'utf8');
+const toolsCode=await readFile(new URL('../map-features.js',import.meta.url),'utf8');
+const html=await readFile(new URL('../city_query_site.html',import.meta.url),'utf8');
+
+test('介面預設勾選機場與機場優先，保留總線長策略與能量限制說明',()=>{
+ assert.match(html,/<input id="planAir"[^>]*checked/);
+ assert.match(html,/<option value="airport-first" selected>/);
+ assert.match(html,/<option value="distance">總線長最短/);
+ assert.match(html,/不保證最低能量/);
+});
 function fixture(initial='[]',blocked=false){
  const elements=new Map();let changed=0,saved=initial;
  const doc={getElementById(id){if(!elements.has(id))elements.set(id,{hidden:true,children:[],append(child){this.children.push(child);},replaceChildren(){this.children=[];}});return elements.get(id);},createElement(){return {};}};
@@ -21,6 +30,17 @@ test('路線只在規劃模式新增，座標驗證、防止重複點及本機�
  assert.equal(f.getSaved().length,2);assert.equal(f.getSaved()[0].city_id,1);
  p.close();assert.equal(p.active,false);assert.equal(p.points.length,2);
  assert.ok(f.getChanged()>0);
+});
+
+test('自動規劃預設機場優先，顯示機場／地面摘要，可復原且不宣稱最低能量',()=>{
+ const {planner:p,context,elements}=fixture();vm.runInContext(toolsCode,context);
+ p.getCities=()=>[{city_id:1,name:'A',x_position:0,y_position:0},{city_id:2,name:'B',x_position:100,y_position:0}];
+ p.getRoutes=()=>[{type:'airport',points:[[0,0],[100,0]]}];
+ context.document.getElementById('planFrom').value='1';context.document.getElementById('planTo').value='2';
+ for(const id of ['planRail','planDirt','planAir'])context.document.getElementById(id).checked=true;
+ p.auto();assert.equal(p.segments[0].type,'airport');assert.equal(p.points.length,2);
+ assert.match(elements.get('planInfo').textContent,/機場優先/);assert.match(elements.get('planInfo').textContent,/機場遷移 1 段/);assert.match(elements.get('planInfo').textContent,/不是精確能量/);
+ p.undo();assert.equal(p.points.length,0);p.redo();assert.equal(p.segments[0].type,'airport');
 });
 test('規劃可重做、反轉與移除途經點；新修改清除重做',()=>{
  const {planner:p}=fixture();p.open();p.addPoint({x:10,y:10,name:'A'});p.addPoint({x:20,y:20,name:'B'});
